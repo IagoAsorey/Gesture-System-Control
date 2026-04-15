@@ -53,6 +53,10 @@ with mp_hands.Hands(
     max_num_hands=4,  # Limita el número de manos
     min_detection_confidence=0.5) as hands:
 
+    # Memoria para guardar la posición Y de la muñeca del frame anterior
+    y_anterior = {"Derecha": None, "Izquierda": None}
+    umbral_movimiento = 0.02 # Sensibilidad (ajustable)
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -79,6 +83,27 @@ with mp_hands.Hands(
                 # Contar dedos para cada mano
                 dedos_arriba, estado_palma = contar_dedos(hand_landmarks, hand_label)
                 total_dedos += sum(dedos_arriba)
+
+
+                # 1. Obtener la posición Y actual de la muñeca (Landmark 0)
+                y_actual = hand_landmarks.landmark[0].y
+                # 2. Verificar si la mano está cerrada (0 dedos)
+                if sum(dedos_arriba) == 0:
+                    # 3. Comparar con la posición anterior (si existe)
+                    if y_anterior[hand_label] is not None:
+                        diferencia = y_anterior[hand_label] - y_actual
+                        
+                        if diferencia > umbral_movimiento:
+                            cv2.putText(frame, f'SUBIENDO {hand_label}', (10, 150 + idx*60),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2, cv2.LINE_AA)
+                            
+                        elif diferencia < -umbral_movimiento:
+                            cv2.putText(frame, f'BAJANDO {hand_label}', (10, 150 + idx*60),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2, cv2.LINE_AA)
+
+                # 4. Actualizar la posición anterior para el SIGUIENTE frame
+                y_anterior[hand_label] = y_actual
+
 
                 # Mostrar el número de dedos levantados en el frame
                 cv2.putText(frame, f'Dedos mano {hand_label}: {sum(dedos_arriba)}', (10, 70 + idx*30), 
