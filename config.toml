@@ -1,0 +1,22 @@
+[camera]
+index = 0
+width = 640
+height = 480
+
+[gesture]
+movement_threshold = 0.02
+palm_required = true
+cooldown_frames = 3
+
+[volume]
+step = 5
+windows_method = "pyautogui"
+linux_method = "wpctl"
+
+[brightness]
+step = 10
+
+[display]
+show_fps = false
+show_landmarks = true
+window_name = "Gesture Control"

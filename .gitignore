@@ -15,3 +15,11 @@ __pycache__/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Modelos MediaPipe
+*.task
+
+# Build
+build/
+dist/
+*.egg-info/
