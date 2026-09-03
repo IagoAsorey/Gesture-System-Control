@@ -10,8 +10,7 @@ cooldown_frames = 3
 
 [volume]
 step = 5
-windows_method = "pyautogui"
-linux_method = "wpctl"
+method = "wpctl"
 
 [brightness]
 step = 10

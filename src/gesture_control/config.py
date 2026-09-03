@@ -25,8 +25,7 @@ class GestureConfig:
 @dataclass(frozen=True)
 class VolumeConfig:
     step: int
-    windows_method: str
-    linux_method: str
+    method: str
 
 
 @dataclass(frozen=True)

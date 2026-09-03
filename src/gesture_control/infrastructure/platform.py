@@ -1,4 +1,3 @@
-import platform
 import subprocess
 import sys
 from abc import ABC, abstractmethod
@@ -16,27 +15,6 @@ class VolumeControlBase(ABC):
     @abstractmethod
     def volume_down(self, step: int) -> bool:
         pass
-
-
-class WindowsVolumeControl(VolumeControlBase):
-    def __init__(self):
-        import pyautogui
-
-        self._pyautogui = pyautogui
-
-    def volume_up(self, step: int) -> bool:
-        try:
-            self._pyautogui.press("volumeup", presses=step // 5 or 1)
-            return True
-        except Exception:
-            return False
-
-    def volume_down(self, step: int) -> bool:
-        try:
-            self._pyautogui.press("volumedown", presses=step // 5 or 1)
-            return True
-        except Exception:
-            return False
 
 
 class LinuxVolumeControl(VolumeControlBase):
@@ -92,24 +70,8 @@ class SBCBrightnessControl:
 
 
 def create_volume_control(method: str | None = None) -> VolumeControl:
-    system = platform.system().lower()
-    if system == "windows":
-        return WindowsVolumeControl()
-    elif system == "linux":
-        return LinuxVolumeControl(method or "wpctl")
-    else:
-        raise RuntimeError(f"Unsupported platform: {system}")
+    return LinuxVolumeControl(method or "wpctl")
 
 
 def create_brightness_control() -> BrightnessControl:
     return SBCBrightnessControl()
-
-
-def get_platform_info() -> dict:
-    return {
-        "system": platform.system(),
-        "release": platform.release(),
-        "version": platform.version(),
-        "machine": platform.machine(),
-        "python": sys.version,
-    }

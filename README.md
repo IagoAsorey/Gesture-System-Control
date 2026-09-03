@@ -1,12 +1,12 @@
 # Gesture System Control
 
-Control system volume and brightness using hand gestures via webcam. Cross-platform (Windows/Linux).
+Control system volume and brightness using hand gestures via webcam. Linux-only (tested on Omarchy/Arch).
 
 ## Features
 - **Right Hand**: Volume control (Up/Down)
 - **Left Hand**: Brightness control (Up/Down)
 - **Palm Safety**: Controls only activate when palm faces camera
-- **Cross-platform**: Works on Windows and Linux (tested on Omarchy/Arch)
+- **Linux**: Uses `wpctl`/`pactl`/`amixer` for volume, `brightnessctl`/`ddcutil` for brightness
 
 ## Requirements
 - Python 3.10+
@@ -59,7 +59,7 @@ cooldown_frames = 3
 
 [volume]
 step = 5
-linux_method = "wpctl"  # wpctl | pactl | amixer
+method = "wpctl"  # wpctl | pactl | amixer
 
 [brightness]
 step = 10
@@ -84,9 +84,9 @@ src/gesture_control/
 ├── infrastructure/   # External implementations
 │   ├── detectors/mediapipe_detector.py
 │   ├── camera/opencv_camera.py
-│   ├── volume/windows_volume.py, linux_volume.py
+│   ├── volume/linux_volume.py
 │   ├── brightness/sbc_brightness.py
-│   └── platform.py   # Factory (OS detection)
+│   └── platform.py   # Factory
 ├── presentation/     # UI
 │   └── display.py
 ├── config.py         # TOML config loader

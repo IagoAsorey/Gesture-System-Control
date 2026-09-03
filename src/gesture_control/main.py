@@ -33,7 +33,7 @@ def main() -> None:
         movement_threshold=config.gesture.movement_threshold,
         palm_required=config.gesture.palm_required,
     )
-    volume_control = create_volume_control(config.volume.linux_method)
+    volume_control = create_volume_control(config.volume.method)
     brightness_control = create_brightness_control()
     executor = ActionExecutor(
         volume_control=volume_control,
