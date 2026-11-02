@@ -36,8 +36,8 @@ MOVEMENT_STEP_THRESHOLD = 0.035
 ACTION_COOLDOWN_SEC = 0.12
 
 # Adjustment step sizes (in percentage)
-VOLUME_STEP = 5
-BRIGHTNESS_STEP = 5
+VOLUME_STEP = 10
+BRIGHTNESS_STEP = 10
 
 # Duration (in seconds) to display visual action feedback on the HUD
 HUD_FEEDBACK_DURATION_SEC = 0.4

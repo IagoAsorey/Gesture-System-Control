@@ -93,9 +93,7 @@ def main() -> None:
                 ):
                     frame = cv2.resize(frame, (config.FRAME_WIDTH, config.FRAME_HEIGHT))
 
-                frame = cv2.flip(frame, 1)
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
                 detected_hands = detector.detect(frame_rgb)
 
                 present_labels = {hand.label for hand in detected_hands}

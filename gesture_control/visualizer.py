@@ -36,6 +36,7 @@ class Visualizer:
         now = time.monotonic()
         frame_h, frame_w, _ = frame.shape
 
+        # 1. Draw skeletal landmarks on the unflipped frame so coordinates match 1:1
         for hand in hands:
             self._draw_landmarks(
                 frame,
@@ -45,7 +46,12 @@ class Visualizer:
                 self._connection_style,
             )
 
-            wrist_px_x = int(hand.landmarks[0].x * frame_w)
+        # 2. Flip the frame horizontally for a natural mirror preview
+        frame = cv2.flip(frame, 1)
+
+        # 3. Draw text overlays after flipping so text is readable (not mirrored)
+        for hand in hands:
+            wrist_px_x = int((1.0 - hand.landmarks[0].x) * frame_w)
             wrist_px_y = int(hand.landmarks[0].y * frame_h)
             status_color = (0, 255, 0) if hand.is_gesture_active else (200, 200, 200)
             status_label = f"{hand.label} ({'ACTIVE' if hand.is_gesture_active else 'idle'})"

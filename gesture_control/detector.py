@@ -83,8 +83,8 @@ class HandDetector:
         seen_labels: set[str] = set()
 
         for idx, hand_landmarks in enumerate(result.hand_landmarks):
-            # Because the video frame is horizontally flipped (mirror view) before
-            # inference, MediaPipe's classification directly matches the physical hand.
+            # MediaPipe assumes an unflipped camera frame and classifies the user's
+            # physical hands directly as "Right" or "Left".
             mp_label = result.handedness[idx][0].category_name
             hand_label = "Right" if mp_label == "Right" else "Left"
 
@@ -111,11 +111,13 @@ class HandDetector:
         index_mcp_x = hand_landmarks[5].x
         pinky_mcp_x = hand_landmarks[17].x
 
-        # Check palm orientation toward the camera
+        # In an unflipped camera frame, when the palm faces the camera:
+        # - Physical Right hand: index MCP is to the right of pinky MCP (index_mcp_x > pinky_mcp_x)
+        # - Physical Left hand: pinky MCP is to the right of index MCP (pinky_mcp_x > index_mcp_x)
         is_palm_visible = (
-            index_mcp_x < pinky_mcp_x
+            index_mcp_x > pinky_mcp_x
             if hand_label == "Right"
-            else pinky_mcp_x < index_mcp_x
+            else pinky_mcp_x > index_mcp_x
         )
         if not is_palm_visible:
             return False
