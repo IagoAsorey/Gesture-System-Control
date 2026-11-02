@@ -1,4 +1,4 @@
-"""Script principal para el control gestual del volumen y brillo en Linux."""
+"""Entry point for the Gesture System Control application."""
 
 import argparse
 import signal
@@ -6,30 +6,32 @@ import sys
 
 import cv2
 
-import config
-from controlador_sistema import ControladorSistema
-from detector_manos import DetectorManos
-from visualizador import Visualizador
+from gesture_control import (
+    HandDetector,
+    SystemController,
+    Visualizer,
+    config,
+)
 
 
 def parse_args() -> argparse.Namespace:
-    """Procesa los argumentos de línea de comandos."""
+    """Parses command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Control gestual de volumen y brillo mediante cámara web."
+        description="Real-time hand gesture control for system volume and display brightness."
     )
-    grupo_preview = parser.add_mutually_exclusive_group()
-    grupo_preview.add_argument(
+    preview_group = parser.add_mutually_exclusive_group()
+    preview_group.add_argument(
         "--preview",
         dest="preview",
         action="store_true",
-        help="Muestra la ventana de previsualización de la cámara (por defecto en desarrollo).",
+        help="Show the real-time camera preview window (enabled by default in development).",
     )
-    grupo_preview.add_argument(
+    preview_group.add_argument(
         "--no-preview",
         "--headless",
         dest="preview",
         action="store_false",
-        help="Ejecuta en segundo plano sin abrir ventana de previsualización.",
+        help="Run in the background without opening a camera preview window.",
     )
     parser.set_defaults(preview=config.SHOW_PREVIEW)
 
@@ -37,80 +39,83 @@ def parse_args() -> argparse.Namespace:
         "--camera",
         type=int,
         default=config.CAMERA_INDEX,
-        help=f"Índice de la cámara de vídeo (por defecto: {config.CAMERA_INDEX}).",
+        help=f"Video capture device index (default: {config.CAMERA_INDEX}).",
     )
     return parser.parse_args()
 
 
 def main() -> None:
-    """Función principal que ejecuta el bucle de captura, detección y control."""
+    """Runs the main video capture, hand detection, and system control loop."""
     args = parse_args()
 
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
-        print(f"Error: No se puede abrir la cámara (índice {args.camera}).", file=sys.stderr)
+        print(f"Error: Could not open video camera (index {args.camera}).", file=sys.stderr)
         sys.exit(1)
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
 
-    detector = DetectorManos()
-    controlador = ControladorSistema()
-    visualizador = Visualizador() if args.preview else None
+    detector = HandDetector()
+    controller = SystemController()
+    visualizer = Visualizer() if args.preview else None
 
-    detener = False
+    should_stop = False
 
-    def manejar_senal(_sig, _frame):
-        nonlocal detener
-        detener = True
+    def handle_signal(_sig: int, _frame) -> None:
+        nonlocal should_stop
+        should_stop = True
 
-    signal.signal(signal.SIGINT, manejar_senal)
-    signal.signal(signal.SIGTERM, manejar_senal)
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
 
-    modo_str = "con previsualización (pulsa ESC o 'q' para salir)" if args.preview else "en segundo plano (headless)"
-    print(f"Control Gestual iniciado {modo_str}.")
+    mode_str = (
+        "with preview window (press ESC or 'q' to exit)"
+        if args.preview
+        else "in headless background mode"
+    )
+    print(f"Gesture System Control started {mode_str}.")
 
     try:
-        while not detener:
+        while not should_stop:
             ret, frame = cap.read()
             if not ret:
-                print("Advertencia: No se pudo leer el frame de la cámara.", file=sys.stderr)
+                print("Warning: Failed to read frame from camera.", file=sys.stderr)
                 break
 
-            # Preparación de la imagen (modo espejo)
+            # Prepare image in mirror view
             frame = cv2.resize(frame, (config.FRAME_WIDTH, config.FRAME_HEIGHT))
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Detectar y analizar manos presentes en el frame
-            resultado_mp = detector.procesar_frame(frame_rgb)
-            manos_detectadas = detector.analizar_resultados(resultado_mp)
+            # Detect and analyze hands in the current frame
+            mp_result = detector.process_frame(frame_rgb)
+            detected_hands = detector.analyze_results(mp_result)
 
-            etiquetas_presentes = set()
-            for mano in manos_detectadas:
-                etiquetas_presentes.add(mano.etiqueta)
-                gesto_activo = mano.estado_palma == "visible" and mano.puno_cerrado
-                controlador.procesar_gesto_mano(
-                    hand_label=mano.etiqueta,
-                    gesto_activo=gesto_activo,
-                    y_actual=mano.y_muneca,
+            present_labels = set()
+            for hand in detected_hands:
+                present_labels.add(hand.label)
+                is_gesture_active = hand.is_palm_visible and hand.is_fist_closed
+                controller.process_hand_gesture(
+                    hand_label=hand.label,
+                    is_gesture_active=is_gesture_active,
+                    current_y=hand.wrist_y,
                 )
 
-            # Reiniciar el estado de las manos que no están en el frame actual
-            for etiqueta in ("Derecha", "Izquierda"):
-                if etiqueta not in etiquetas_presentes:
-                    controlador.reiniciar_mano(etiqueta)
+            # Reset tracking state for any hand not currently visible in the frame
+            for label in ("Right", "Left"):
+                if label not in present_labels:
+                    controller.reset_hand(label)
 
-            # Renderizar ventana opcional de previsualización
-            if visualizador is not None:
-                salir = visualizador.renderizar(frame, manos_detectadas, controlador)
-                if salir:
+            # Render optional preview window
+            if visualizer is not None:
+                if visualizer.render(frame, detected_hands, controller):
                     break
     finally:
         cap.release()
-        detector.cerrar()
-        if visualizador is not None:
-            visualizador.cerrar()
+        detector.close()
+        if visualizer is not None:
+            visualizer.close()
 
 
 if __name__ == "__main__":
