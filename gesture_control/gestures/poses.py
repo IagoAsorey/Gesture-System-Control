@@ -8,6 +8,7 @@ from gesture_control import config
 # Landmark indices for thumb and fingertips/PIP joints
 _THUMB_TIP = 4
 _INDEX_TIP = 8
+_MIDDLE_TIP = 12
 _FINGER_TIPS = (8, 12, 16, 20)
 _FINGER_PIPS = (6, 10, 14, 18)
 _OTHER_FINGER_TIPS = (12, 16, 20)
@@ -48,12 +49,33 @@ def pinch_distance(hand_landmarks: Sequence) -> float:
     return math.hypot(thumb_tip.x - index_tip.x, thumb_tip.y - index_tip.y)
 
 
+def is_three_finger_pinch(
+    hand_landmarks: Sequence,
+    hand_label: str,
+    distance_threshold: float = config.WHEEL_DISTANCE_THRESHOLD,
+) -> bool:
+    """Returns True when thumb, index, and middle fingertips are pinched together."""
+    if not is_palm_visible(hand_landmarks, hand_label):
+        return False
+
+    if is_palm_fist(hand_landmarks, hand_label):
+        return False
+
+    thumb = hand_landmarks[_THUMB_TIP]
+    index = hand_landmarks[_INDEX_TIP]
+    middle = hand_landmarks[_MIDDLE_TIP]
+
+    dist_index = math.hypot(thumb.x - index.x, thumb.y - index.y)
+    dist_middle = math.hypot(thumb.x - middle.x, thumb.y - middle.y)
+    return dist_index <= distance_threshold and dist_middle <= distance_threshold
+
+
 def is_pinch(
     hand_landmarks: Sequence,
     hand_label: str,
     distance_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
 ) -> bool:
-    """Returns True if the thumb and index fingertips touch while not in a closed fist."""
+    """Returns True if only the thumb and index fingertips touch (2-finger pinch)."""
     if not is_palm_visible(hand_landmarks, hand_label):
         return False
 
@@ -64,6 +86,15 @@ def is_pinch(
         for tip, pip in zip(_OTHER_FINGER_TIPS, _OTHER_FINGER_PIPS)
     )
     if not has_extended_other_finger:
+        return False
+
+    # Exclude 3-finger wheel grip: middle finger must stay separated from thumb and index
+    thumb = hand_landmarks[_THUMB_TIP]
+    index = hand_landmarks[_INDEX_TIP]
+    middle = hand_landmarks[_MIDDLE_TIP]
+    if math.hypot(thumb.x - middle.x, thumb.y - middle.y) <= config.WHEEL_DISTANCE_THRESHOLD * 1.2:
+        return False
+    if math.hypot(index.x - middle.x, index.y - middle.y) <= distance_threshold:
         return False
 
     return pinch_distance(hand_landmarks) <= distance_threshold

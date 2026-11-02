@@ -17,9 +17,11 @@ from gesture_control.gestures import (
     BaseGesture,
     FistVerticalGesture,
     PinchGesture,
+    WheelGesture,
     is_palm_fist,
     is_palm_visible,
     is_pinch,
+    is_three_finger_pinch,
 )
 from gesture_control.visualizer import Visualizer
 
@@ -39,9 +41,11 @@ __all__ = [
     "SystemController",
     "Visualizer",
     "VolumeAction",
+    "WheelGesture",
     "config",
     "create_default_actions",
     "is_palm_fist",
     "is_palm_visible",
     "is_pinch",
+    "is_three_finger_pinch",
 ]

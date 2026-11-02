@@ -41,6 +41,12 @@ PINCH_DISTANCE_THRESHOLD = 0.05
 # Minimum elapsed time (in seconds) between consecutive pinch triggers per hand
 PINCH_COOLDOWN_SEC = 0.5
 
+# Normalized 2D distance (0.0 to 1.0) to detect a 3-finger wheel grip (thumb + index + middle)
+WHEEL_DISTANCE_THRESHOLD = 0.065
+
+# Rotation angle in radians (~15 degrees) required to trigger a wheel step adjustment
+WHEEL_ANGLE_THRESHOLD = 0.26
+
 # Adjustment step sizes (in percentage)
 VOLUME_STEP = 10
 BRIGHTNESS_STEP = 10
@@ -53,11 +59,12 @@ GESTURE_BINDINGS: dict[str, dict[str, str]] = {
     "Right": {
         "fist_up": "volume_up",
         "fist_down": "volume_down",
+        "wheel_right": "volume_up",
+        "wheel_left": "volume_down",
         "pinch": "play_pause",
     },
     "Left": {
         "fist_up": "brightness_up",
         "fist_down": "brightness_down",
-        "pinch": "play_pause",
     },
 }
