@@ -41,3 +41,15 @@ BRIGHTNESS_STEP = 10
 
 # Duration (in seconds) to display visual action feedback on the HUD
 HUD_FEEDBACK_DURATION_SEC = 0.4
+
+# Gesture-to-action mappings per hand: {hand_label: {gesture_name: action_name}}
+GESTURE_BINDINGS: dict[str, dict[str, str]] = {
+    "Right": {
+        "fist_up": "volume_up",
+        "fist_down": "volume_down",
+    },
+    "Left": {
+        "fist_up": "brightness_up",
+        "fist_down": "brightness_down",
+    },
+}

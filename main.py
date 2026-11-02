@@ -98,11 +98,7 @@ def main() -> None:
 
                 present_labels = {hand.label for hand in detected_hands}
                 for hand in detected_hands:
-                    controller.process_hand_gesture(
-                        hand_label=hand.label,
-                        is_gesture_active=hand.is_gesture_active,
-                        current_y=hand.wrist_y,
-                    )
+                    controller.process_hand(hand)
 
                 for label in ("Right", "Left"):
                     if label not in present_labels:
