@@ -56,10 +56,6 @@ def main() -> None:
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
 
-    detector = HandDetector()
-    controller = SystemController()
-    visualizer = Visualizer() if args.preview else None
-
     should_stop = False
 
     def handle_signal(_sig: int, _frame) -> None:
@@ -68,6 +64,12 @@ def main() -> None:
 
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
+    # Automatically reap finished background child processes to prevent zombies
+    if hasattr(signal, "SIGCHLD"):
+        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+
+    controller = SystemController()
+    visualizer = Visualizer() if args.preview else None
 
     mode_str = (
         "with preview window (press ESC or 'q' to exit)"
@@ -77,43 +79,43 @@ def main() -> None:
     print(f"Gesture System Control started {mode_str}.")
 
     try:
-        while not should_stop:
-            ret, frame = cap.read()
-            if not ret:
-                print("Warning: Failed to read frame from camera.", file=sys.stderr)
-                break
+        with HandDetector() as detector:
+            while not should_stop:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Warning: Failed to read frame from camera.", file=sys.stderr)
+                    break
 
-            # Prepare image in mirror view
-            frame = cv2.resize(frame, (config.FRAME_WIDTH, config.FRAME_HEIGHT))
-            frame = cv2.flip(frame, 1)
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Resize only if the camera driver ignored the requested dimensions
+                if (
+                    frame.shape[1] != config.FRAME_WIDTH
+                    or frame.shape[0] != config.FRAME_HEIGHT
+                ):
+                    frame = cv2.resize(frame, (config.FRAME_WIDTH, config.FRAME_HEIGHT))
 
-            # Detect and analyze hands in the current frame
-            mp_result = detector.process_frame(frame_rgb)
-            detected_hands = detector.analyze_results(mp_result)
+                frame = cv2.flip(frame, 1)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            present_labels = set()
-            for hand in detected_hands:
-                present_labels.add(hand.label)
-                is_gesture_active = hand.is_palm_visible and hand.is_fist_closed
-                controller.process_hand_gesture(
-                    hand_label=hand.label,
-                    is_gesture_active=is_gesture_active,
-                    current_y=hand.wrist_y,
-                )
+                detected_hands = detector.detect(frame_rgb)
 
-            # Reset tracking state for any hand not currently visible in the frame
-            for label in ("Right", "Left"):
-                if label not in present_labels:
-                    controller.reset_hand(label)
+                present_labels = {hand.label for hand in detected_hands}
+                for hand in detected_hands:
+                    controller.process_hand_gesture(
+                        hand_label=hand.label,
+                        is_gesture_active=hand.is_gesture_active,
+                        current_y=hand.wrist_y,
+                    )
 
-            # Render optional preview window
-            if visualizer is not None:
-                if visualizer.render(frame, detected_hands, controller):
+                for label in ("Right", "Left"):
+                    if label not in present_labels:
+                        controller.reset_hand(label)
+
+                if visualizer is not None and visualizer.render(
+                    frame, detected_hands, controller
+                ):
                     break
     finally:
         cap.release()
-        detector.close()
         if visualizer is not None:
             visualizer.close()
 

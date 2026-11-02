@@ -3,17 +3,17 @@
 from dataclasses import dataclass
 import shutil
 import subprocess
+import sys
 import time
 from typing import Optional
 
 from gesture_control import config
 
 
-@dataclass
+@dataclass(slots=True)
 class HandGestureState:
     """Tracks continuous vertical drag state and HUD feedback for a specific hand."""
 
-    is_active: bool = False
     anchor_y: Optional[float] = None
     last_trigger_ts: float = 0.0
     last_action_text: str = ""
@@ -45,11 +45,14 @@ class SystemController:
         self.volume_cmd = shutil.which("omarchy-audio-output-volume")
         self.brightness_cmd = shutil.which("omarchy-brightness-display")
 
+        if not self.volume_cmd:
+            print("Warning: 'omarchy-audio-output-volume' not found in PATH.", file=sys.stderr)
+        if not self.brightness_cmd:
+            print("Warning: 'omarchy-brightness-display' not found in PATH.", file=sys.stderr)
+
     def reset_hand(self, hand_label: str) -> None:
         """Resets vertical drag tracking when a hand opens or leaves the camera frame."""
-        if hand_label in self.states:
-            state = self.states[hand_label]
-            state.is_active = False
+        if state := self.states.get(hand_label):
             state.anchor_y = None
 
     def process_hand_gesture(
@@ -70,29 +73,24 @@ class SystemController:
             return None
 
         if not is_gesture_active:
-            self.reset_hand(hand_label)
+            state.anchor_y = None
             return None
 
-        now = time.monotonic()
-
         # First frame with a closed fist: set the vertical anchor without firing an action
-        if not state.is_active or state.anchor_y is None:
-            state.is_active = True
+        if state.anchor_y is None:
             state.anchor_y = current_y
             return None
 
         # Positive delta means the hand moved upward (Y decreases toward top of frame)
         delta_y = state.anchor_y - current_y
-
         if abs(delta_y) < self.step_threshold:
             return None
 
-        # Enforce cooldown so the OS / OSD is not flooded
+        now = time.monotonic()
         if (now - state.last_trigger_ts) < self.cooldown_sec:
             return None
 
         increase = delta_y > 0
-        # Shift the anchor to the current position to require another full step movement
         state.anchor_y = current_y
         state.last_trigger_ts = now
 
@@ -110,17 +108,15 @@ class SystemController:
 
     def adjust_volume(self, increase: bool) -> None:
         """Increases or decreases system audio volume via omarchy-audio-output-volume."""
-        if not self.volume_cmd:
-            return
-        arg = f"+{self.volume_step}" if increase else f"-{self.volume_step}"
-        self._run_async([self.volume_cmd, arg])
+        if self.volume_cmd:
+            arg = f"+{self.volume_step}" if increase else f"-{self.volume_step}"
+            self._run_async([self.volume_cmd, arg])
 
     def adjust_brightness(self, increase: bool) -> None:
         """Increases or decreases display brightness via omarchy-brightness-display."""
-        if not self.brightness_cmd:
-            return
-        arg = f"+{self.brightness_step}%" if increase else f"{self.brightness_step}%-"
-        self._run_async([self.brightness_cmd, arg])
+        if self.brightness_cmd:
+            arg = f"+{self.brightness_step}%" if increase else f"{self.brightness_step}%-"
+            self._run_async([self.brightness_cmd, arg])
 
     @staticmethod
     def _run_async(command: list[str]) -> None:

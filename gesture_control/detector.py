@@ -13,21 +13,23 @@ import numpy as np
 
 from gesture_control import config
 
+# Landmark indices for the 4 non-thumb fingertips and their corresponding PIP joints
+_FINGER_TIPS = (8, 12, 16, 20)
+_FINGER_PIPS = (6, 10, 14, 18)
 
-@dataclass
+
+@dataclass(slots=True)
 class DetectedHand:
     """Processed state and landmark data for a single detected hand."""
 
     label: str  # "Right" or "Left"
     landmarks: list
-    fingers_up: list[int]
-    is_palm_visible: bool
-    is_fist_closed: bool
+    is_gesture_active: bool
     wrist_y: float
 
 
 class HandDetector:
-    """Encapsulates MediaPipe HandLandmarker inference and finger state analysis."""
+    """Encapsulates MediaPipe HandLandmarker inference and gesture state analysis."""
 
     def __init__(
         self,
@@ -40,9 +42,8 @@ class HandDetector:
         self.model_path = Path(model_path)
         self._ensure_model()
 
-        base_options = mp_python.BaseOptions(model_asset_path=str(self.model_path))
         options = vision.HandLandmarkerOptions(
-            base_options=base_options,
+            base_options=mp_python.BaseOptions(model_asset_path=str(self.model_path)),
             running_mode=vision.RunningMode.VIDEO,
             num_hands=max_num_hands,
             min_hand_detection_confidence=min_detection_confidence,
@@ -53,93 +54,77 @@ class HandDetector:
         self._last_timestamp_ms = 0
 
     def _ensure_model(self) -> None:
-        """Downloads the official MediaPipe hand_landmarker.task bundle if missing."""
-        if self.model_path.is_file():
+        """Downloads the official MediaPipe hand_landmarker.task bundle atomically if missing."""
+        if self.model_path.is_file() and self.model_path.stat().st_size > 0:
             return
+
         print(f"Downloading MediaPipe model to {self.model_path}...")
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(config.MODEL_URL, str(self.model_path))
-        print("Model downloaded successfully.")
+        tmp_path = self.model_path.with_suffix(".task.tmp")
+        try:
+            urllib.request.urlretrieve(config.MODEL_URL, str(tmp_path))
+            tmp_path.replace(self.model_path)
+            print("Model downloaded successfully.")
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
-    def process_frame(self, frame_rgb: np.ndarray) -> vision.HandLandmarkerResult:
-        """Processes an RGB frame and returns the MediaPipe HandLandmarkerResult."""
+    def detect(self, frame_rgb: np.ndarray) -> list[DetectedHand]:
+        """Runs hand landmark detection on an RGB frame and returns analyzed hands."""
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-        timestamp_ms = int(time.monotonic() * 1000)
-        if timestamp_ms <= self._last_timestamp_ms:
-            timestamp_ms = self._last_timestamp_ms + 1
+        timestamp_ms = max(int(time.monotonic() * 1000), self._last_timestamp_ms + 1)
         self._last_timestamp_ms = timestamp_ms
 
-        return self.landmarker.detect_for_video(mp_image, timestamp_ms)
+        result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+        if not result or not result.hand_landmarks:
+            return []
 
-    def analyze_results(
-        self, detection_result: vision.HandLandmarkerResult
-    ) -> list[DetectedHand]:
-        """Extracts and analyzes all hands present in a HandLandmarkerResult."""
         hands: list[DetectedHand] = []
-        if not detection_result or not detection_result.hand_landmarks:
-            return hands
+        seen_labels: set[str] = set()
 
-        for idx, hand_landmarks in enumerate(detection_result.hand_landmarks):
+        for idx, hand_landmarks in enumerate(result.hand_landmarks):
             # Because the video frame is horizontally flipped (mirror view) before
-            # inference, MediaPipe's classification directly matches the user's physical hand.
-            mp_label = detection_result.handedness[idx][0].category_name
+            # inference, MediaPipe's classification directly matches the physical hand.
+            mp_label = result.handedness[idx][0].category_name
             hand_label = "Right" if mp_label == "Right" else "Left"
 
-            fingers_up, is_palm_visible = self.count_fingers(hand_landmarks, hand_label)
-            is_fist_closed = sum(fingers_up) == 0
+            # Prevent duplicate hand classifications in the same frame from conflicting
+            if hand_label in seen_labels:
+                continue
+            seen_labels.add(hand_label)
 
+            is_active = self._is_palm_fist_active(hand_landmarks, hand_label)
             hands.append(
                 DetectedHand(
                     label=hand_label,
                     landmarks=hand_landmarks,
-                    fingers_up=fingers_up,
-                    is_palm_visible=is_palm_visible,
-                    is_fist_closed=is_fist_closed,
+                    is_gesture_active=is_active,
                     wrist_y=hand_landmarks[0].y,
                 )
             )
 
         return hands
 
-    def count_fingers(
-        self, hand_landmarks: Sequence, hand_label: str
-    ) -> tuple[list[int], bool]:
-        """Counts extended fingers and determines whether the palm faces the camera."""
-        fingers: list[int] = []
-        tip_indices = [4, 8, 12, 16, 20]
-
+    @staticmethod
+    def _is_palm_fist_active(hand_landmarks: Sequence, hand_label: str) -> bool:
+        """Returns True if the palm faces the camera and the fingers form a closed fist."""
         index_mcp_x = hand_landmarks[5].x
         pinky_mcp_x = hand_landmarks[17].x
 
-        # Determine if the palm is facing the camera or facing away
-        if hand_label == "Right":
-            is_palm_visible = index_mcp_x < pinky_mcp_x
-        else:
-            is_palm_visible = pinky_mcp_x < index_mcp_x
+        # Check palm orientation toward the camera
+        is_palm_visible = (
+            index_mcp_x < pinky_mcp_x
+            if hand_label == "Right"
+            else pinky_mcp_x < index_mcp_x
+        )
+        if not is_palm_visible:
+            return False
 
-        thumb_tip_x = hand_landmarks[tip_indices[0]].x
-        thumb_ip_x = hand_landmarks[tip_indices[0] - 1].x
-
-        if hand_label == "Right":
-            if is_palm_visible:
-                is_thumb_up = thumb_tip_x < thumb_ip_x
-            else:
-                is_thumb_up = thumb_tip_x > thumb_ip_x
-        else:
-            if is_palm_visible:
-                is_thumb_up = thumb_tip_x > thumb_ip_x
-            else:
-                is_thumb_up = thumb_tip_x < thumb_ip_x
-
-        fingers.append(1 if is_thumb_up else 0)
-
-        # Evaluate the remaining 4 fingers (index, middle, ring, pinky)
-        for i in range(1, 5):
-            finger_tip_y = hand_landmarks[tip_indices[i]].y
-            finger_pip_y = hand_landmarks[tip_indices[i] - 2].y
-            fingers.append(1 if finger_tip_y < finger_pip_y else 0)
-
-        return fingers, is_palm_visible
+        # Check that all 4 fingers (index, middle, ring, pinky) are folded down
+        return all(
+            hand_landmarks[tip].y > hand_landmarks[pip].y
+            for tip, pip in zip(_FINGER_TIPS, _FINGER_PIPS)
+        )
 
     def close(self) -> None:
         """Releases underlying MediaPipe C++ resources."""
