@@ -54,7 +54,15 @@ class Visualizer:
             wrist_px_x = int((1.0 - hand.landmarks[0].x) * frame_w)
             wrist_px_y = int(hand.landmarks[0].y * frame_h)
             status_color = (0, 255, 0) if hand.is_gesture_active else (200, 200, 200)
-            status_label = f"{hand.label} ({'ACTIVE' if hand.is_gesture_active else 'idle'})"
+            state = controller.states[hand.label]
+            if (
+                state.last_action_text
+                and (now - state.last_action_ts) <= config.HUD_FEEDBACK_DURATION_SEC
+            ):
+                status_label = f"{hand.label}\n{state.last_action_text}"
+            else:
+                status_label = f"{hand.label}"
+
             cv2.putText(
                 frame,
                 status_label,
@@ -64,23 +72,6 @@ class Visualizer:
                 status_color,
                 2,
             )
-
-        # Render HUD feedback for both hands
-        for label, pos_x in (("Right", 15), ("Left", frame_w - 250)):
-            state = controller.states[label]
-            if (
-                state.last_action_text
-                and (now - state.last_action_ts) <= config.HUD_FEEDBACK_DURATION_SEC
-            ):
-                cv2.putText(
-                    frame,
-                    state.last_action_text,
-                    (pos_x, 45),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    state.last_action_color,
-                    3,
-                )
 
         cv2.imshow(self.window_name, frame)
         key = cv2.waitKey(1) & 0xFF
