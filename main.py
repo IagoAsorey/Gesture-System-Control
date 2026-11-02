@@ -1,105 +1,117 @@
-"""Script principal para el control gestual del volumen y brillo."""
+"""Script principal para el control gestual del volumen y brillo en Linux."""
+
+import argparse
+import signal
+import sys
 
 import cv2
-import pyautogui
-import screen_brightness_control as sbc
 
+import config
+from controlador_sistema import ControladorSistema
 from detector_manos import DetectorManos
+from visualizador import Visualizador
 
 
-def main():
-    """Función principal que ejecuta el bucle de la cámara y la lógica de control."""
-    cap = cv2.VideoCapture(0)
+def parse_args() -> argparse.Namespace:
+    """Procesa los argumentos de línea de comandos."""
+    parser = argparse.ArgumentParser(
+        description="Control gestual de volumen y brillo mediante cámara web."
+    )
+    grupo_preview = parser.add_mutually_exclusive_group()
+    grupo_preview.add_argument(
+        "--preview",
+        dest="preview",
+        action="store_true",
+        help="Muestra la ventana de previsualización de la cámara (por defecto en desarrollo).",
+    )
+    grupo_preview.add_argument(
+        "--no-preview",
+        "--headless",
+        dest="preview",
+        action="store_false",
+        help="Ejecuta en segundo plano sin abrir ventana de previsualización.",
+    )
+    parser.set_defaults(preview=config.SHOW_PREVIEW)
+
+    parser.add_argument(
+        "--camera",
+        type=int,
+        default=config.CAMERA_INDEX,
+        help=f"Índice de la cámara de vídeo (por defecto: {config.CAMERA_INDEX}).",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Función principal que ejecuta el bucle de captura, detección y control."""
+    args = parse_args()
+
+    cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
-        print("Error: No se puede abrir la cámara.")
-        exit()
+        print(f"Error: No se puede abrir la cámara (índice {args.camera}).", file=sys.stderr)
+        sys.exit(1)
+
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
 
     detector = DetectorManos()
+    controlador = ControladorSistema()
+    visualizador = Visualizador() if args.preview else None
 
-    # Memoria para la posición Y de la muñeca del frame anterior
-    y_anterior = {"Derecha": None, "Izquierda": None}
-    umbral_movimiento = 0.02
+    detener = False
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    def manejar_senal(_sig, _frame):
+        nonlocal detener
+        detener = True
 
-        # Preparación de la imagen
-        frame = cv2.resize(frame, (640, 480))
-        frame = cv2.flip(frame, 1)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    signal.signal(signal.SIGINT, manejar_senal)
+    signal.signal(signal.SIGTERM, manejar_senal)
 
-        # Procesar para detectar manos
-        results = detector.procesar_frame(frame_rgb)
+    modo_str = "con previsualización (pulsa ESC o 'q' para salir)" if args.preview else "en segundo plano (headless)"
+    print(f"Control Gestual iniciado {modo_str}.")
 
-        if results.multi_hand_landmarks:
-            for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
-                # Obtener la etiqueta de la mano
-                etiqueta_mp = results.multi_handedness[idx].classification[0].label
-                hand_label = "Derecha" if etiqueta_mp == "Right" else "Izquierda"
-                
-                # Analizar mano
-                dedos_arriba, estado_palma = detector.contar_dedos(hand_landmarks, hand_label)
-                y_actual = hand_landmarks.landmark[0].y
+    try:
+        while not detener:
+            ret, frame = cap.read()
+            if not ret:
+                print("Advertencia: No se pudo leer el frame de la cámara.", file=sys.stderr)
+                break
 
-                if estado_palma == 'visible':
-                    # Mano cerrada
-                    if sum(dedos_arriba) == 0:
-                        if y_anterior[hand_label] is not None:
-                            diferencia = y_anterior[hand_label] - y_actual
+            # Preparación de la imagen (modo espejo)
+            frame = cv2.resize(frame, (config.FRAME_WIDTH, config.FRAME_HEIGHT))
+            frame = cv2.flip(frame, 1)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                            # Gesto de subir
-                            if diferencia > umbral_movimiento:
-                                if hand_label == "Derecha":     # Volumen
-                                    pyautogui.press('volumeup', presses=10)
-                                    cv2.putText(
-                                        frame, 'VOLUMEN +', (10, 50),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3
-                                    )
-                                elif hand_label == "Izquierda": # Brillo
-                                    try:
-                                        brillo_actual = sbc.get_brightness()[0]
-                                        sbc.set_brightness(min(100, brillo_actual + 10))
-                                        cv2.putText(
-                                            frame, 'BRILLO +', (400, 50),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3
-                                        )
-                                    except Exception:
-                                        pass
-                                                        
-                            # Gesto de bajar
-                            elif diferencia < -umbral_movimiento:
-                                if hand_label == "Derecha":     # Volumen
-                                    pyautogui.press('volumedown', presses=10)
-                                    cv2.putText(
-                                        frame, 'VOLUMEN -', (10, 50),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3
-                                    )
-                                elif hand_label == "Izquierda": # Brillo
-                                    try:
-                                        brillo_actual = sbc.get_brightness()[0]
-                                        sbc.set_brightness(max(0, brillo_actual - 10))
-                                        cv2.putText(
-                                            frame, 'BRILLO -', (400, 50),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3
-                                        )
-                                    except Exception:
-                                        pass
-                # Guardamos la posición para compararla en el siguiente frame
-                y_anterior[hand_label] = y_actual
-                
-                # Dibujar esqueleto sobre el video
-                detector.dibujar_manos(frame, hand_landmarks)
+            # Detectar y analizar manos presentes en el frame
+            resultado_mp = detector.procesar_frame(frame_rgb)
+            manos_detectadas = detector.analizar_resultados(resultado_mp)
 
-        cv2.imshow("Control Gestual del Sistema", frame)
+            etiquetas_presentes = set()
+            for mano in manos_detectadas:
+                etiquetas_presentes.add(mano.etiqueta)
+                gesto_activo = mano.estado_palma == "visible" and mano.puno_cerrado
+                controlador.procesar_gesto_mano(
+                    hand_label=mano.etiqueta,
+                    gesto_activo=gesto_activo,
+                    y_actual=mano.y_muneca,
+                )
 
-        # Salir con la tecla ESC (código ASCII 27)
-        if cv2.waitKey(1) & 0xFF == 27: break
+            # Reiniciar el estado de las manos que no están en el frame actual
+            for etiqueta in ("Derecha", "Izquierda"):
+                if etiqueta not in etiquetas_presentes:
+                    controlador.reiniciar_mano(etiqueta)
 
-    cap.release()
-    cv2.destroyAllWindows()
+            # Renderizar ventana opcional de previsualización
+            if visualizador is not None:
+                salir = visualizador.renderizar(frame, manos_detectadas, controlador)
+                if salir:
+                    break
+    finally:
+        cap.release()
+        detector.cerrar()
+        if visualizador is not None:
+            visualizador.cerrar()
 
-# Punto de entrada de la aplicación
+
 if __name__ == "__main__":
     main()
