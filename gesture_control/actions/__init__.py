@@ -1,9 +1,14 @@
 """Modular system actions package."""
 
 from gesture_control import config
+from gesture_control.actions.audio import (
+    MediaNextAction,
+    MediaPlayPauseAction,
+    MediaPreviousAction,
+    VolumeAction,
+)
 from gesture_control.actions.base import BaseAction, CommandAction
 from gesture_control.actions.brightness import BrightnessAction
-from gesture_control.actions.volume import VolumeAction
 
 
 def create_default_actions(
@@ -16,6 +21,9 @@ def create_default_actions(
         "volume_down": VolumeAction(increase=False, step=volume_step),
         "brightness_up": BrightnessAction(increase=True, step=brightness_step),
         "brightness_down": BrightnessAction(increase=False, step=brightness_step),
+        "play_pause": MediaPlayPauseAction(),
+        "next_track": MediaNextAction(),
+        "previous_track": MediaPreviousAction(),
     }
 
 
@@ -23,6 +31,9 @@ __all__ = [
     "BaseAction",
     "BrightnessAction",
     "CommandAction",
+    "MediaNextAction",
+    "MediaPlayPauseAction",
+    "MediaPreviousAction",
     "VolumeAction",
     "create_default_actions",
 ]

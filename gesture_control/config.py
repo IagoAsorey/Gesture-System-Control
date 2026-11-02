@@ -35,6 +35,12 @@ MOVEMENT_STEP_THRESHOLD = 0.035
 # Minimum elapsed time (in seconds) between consecutive adjustments per hand
 ACTION_COOLDOWN_SEC = 0.12
 
+# Normalized 2D distance (0.0 to 1.0) between thumb tip and index tip to detect a pinch
+PINCH_DISTANCE_THRESHOLD = 0.05
+
+# Minimum elapsed time (in seconds) between consecutive pinch triggers per hand
+PINCH_COOLDOWN_SEC = 0.5
+
 # Adjustment step sizes (in percentage)
 VOLUME_STEP = 10
 BRIGHTNESS_STEP = 10
@@ -47,9 +53,11 @@ GESTURE_BINDINGS: dict[str, dict[str, str]] = {
     "Right": {
         "fist_up": "volume_up",
         "fist_down": "volume_down",
+        "pinch": "play_pause",
     },
     "Left": {
         "fist_up": "brightness_up",
         "fist_down": "brightness_down",
+        "pinch": "play_pause",
     },
 }

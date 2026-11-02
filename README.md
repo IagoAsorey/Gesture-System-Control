@@ -6,7 +6,8 @@ Control your Linux system volume and display brightness using real-time hand ges
 
 - **Right Hand (Volume Control):** Move a closed fist up or down to increase or decrease system audio volume via `omarchy-audio-output-volume`.
 - **Left Hand (Brightness Control):** Move a closed fist up or down to increase or decrease display brightness via `omarchy-brightness-display`.
-- **Palm & Fist Safety Lock:** Actions only trigger when your palm faces the camera and your fingers are closed into a fist, preventing accidental triggers.
+- **Thumb + Index Pinch (Play / Pause):** Touch your thumb and index fingertips together to toggle media playback via `omarchy-shell media playPause`.
+- **Palm & Fist Safety Lock:** Actions only trigger when your palm faces the camera, preventing accidental triggers.
 - **Smooth Anchor-Based Tracking & Native OSD:** Continuous vertical movement tracking with configurable step thresholds and cooldowns, triggering your desktop's native OSD.
 - **Modular Preview Architecture:** Optional real-time OpenCV visualization window (`--preview` / `--no-preview`) decoupled from core detection so the application can run lightweight in the background.
 
@@ -19,12 +20,14 @@ Gesture-System-Control/
 │   │   ├── __init__.py       # Action registry and exports
 │   │   ├── base.py           # BaseAction and CommandAction interfaces
 │   │   ├── brightness.py     # Display brightness actions
+│   │   ├── media.py          # Media playback (play/pause) actions
 │   │   └── volume.py         # System audio volume actions
 │   ├── gestures/
 │   │   ├── __init__.py       # Gesture exports
 │   │   ├── base.py           # BaseGesture interface
 │   │   ├── fist_vertical.py  # Vertical closed-fist movement recognizer
-│   │   └── poses.py          # Static hand pose evaluation (palm-fist check)
+│   │   ├── pinch.py          # Thumb-index pinch gesture recognizer
+│   │   └── poses.py          # Static hand pose evaluation (palm-fist & pinch checks)
 │   ├── __init__.py           # Package exports
 │   ├── config.py             # Centralized configuration, thresholds, and gesture bindings
 │   ├── controller.py         # Gesture-to-action router and HUD feedback state

@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 from gesture_control import config
 from gesture_control.actions import BaseAction, create_default_actions
 from gesture_control.detector import DetectedHand
-from gesture_control.gestures import BaseGesture, FistVerticalGesture
+from gesture_control.gestures import BaseGesture, FistVerticalGesture, PinchGesture
 
 
 @dataclass(slots=True)
@@ -36,8 +36,11 @@ class SystemController:
             step_threshold=step_threshold,
             cooldown_sec=cooldown_sec,
         )
+        self._pinch_gesture = PinchGesture()
         self.gestures: list[BaseGesture] = (
-            list(gestures) if gestures is not None else [self._fist_gesture]
+            list(gestures)
+            if gestures is not None
+            else [self._fist_gesture, self._pinch_gesture]
         )
         self.actions: dict[str, BaseAction] = (
             dict(actions)
