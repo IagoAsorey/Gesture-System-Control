@@ -5,14 +5,31 @@ from typing import Sequence
 
 from gesture_control import config
 
-# Landmark indices for thumb and fingertips/PIP joints
-_THUMB_TIP = 4
-_INDEX_TIP = 8
-_MIDDLE_TIP = 12
+# Canonical finger order and MediaPipe fingertip landmark indices
+_FINGER_ORDER = ("thumb", "index", "middle", "ring", "pinky")
+FINGER_TIPS: dict[str, int] = {
+    "thumb": 4,
+    "index": 8,
+    "middle": 12,
+    "ring": 16,
+    "pinky": 20,
+}
+
+# Landmark indices for the 4 non-thumb fingertips and their corresponding PIP joints
 _FINGER_TIPS = (8, 12, 16, 20)
 _FINGER_PIPS = (6, 10, 14, 18)
-_OTHER_FINGER_TIPS = (12, 16, 20)
-_OTHER_FINGER_PIPS = (10, 14, 18)
+
+
+def normalize_fingers(fingers: Sequence[str]) -> tuple[str, ...]:
+    """Validates and normalizes a sequence of finger names into a canonical tuple."""
+    cleaned = {f.strip().lower() for f in fingers}
+    unknown = cleaned - FINGER_TIPS.keys()
+    if unknown:
+        raise ValueError(
+            f"Unknown finger name(s): {sorted(unknown)}. "
+            f"Valid fingers are: {list(_FINGER_ORDER)}"
+        )
+    return tuple(f for f in _FINGER_ORDER if f in cleaned)
 
 
 def is_palm_visible(hand_landmarks: Sequence, hand_label: str) -> bool:
@@ -42,59 +59,88 @@ def is_palm_fist(hand_landmarks: Sequence, hand_label: str) -> bool:
     )
 
 
+def pinch_group_max_distance(
+    hand_landmarks: Sequence,
+    fingers: Sequence[str] = ("thumb", "index"),
+) -> float:
+    """Returns the maximum 2D distance between the reference finger and all other selected fingers."""
+    selected = normalize_fingers(fingers)
+    if len(selected) < 2:
+        return 0.0
+
+    ref_name = "thumb" if "thumb" in selected else selected[0]
+    ref_pt = hand_landmarks[FINGER_TIPS[ref_name]]
+    return max(
+        math.hypot(
+            ref_pt.x - hand_landmarks[FINGER_TIPS[f]].x,
+            ref_pt.y - hand_landmarks[FINGER_TIPS[f]].y,
+        )
+        for f in selected
+        if f != ref_name
+    )
+
+
 def pinch_distance(hand_landmarks: Sequence) -> float:
     """Returns the normalized 2D distance between the thumb tip and index fingertip."""
-    thumb_tip = hand_landmarks[_THUMB_TIP]
-    index_tip = hand_landmarks[_INDEX_TIP]
-    return math.hypot(thumb_tip.x - index_tip.x, thumb_tip.y - index_tip.y)
+    return pinch_group_max_distance(hand_landmarks, ("thumb", "index"))
 
 
-def is_three_finger_pinch(
+def is_exact_pinch(
     hand_landmarks: Sequence,
     hand_label: str,
-    distance_threshold: float = config.WHEEL_DISTANCE_THRESHOLD,
+    fingers: Sequence[str] = ("thumb", "index"),
+    distance_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
 ) -> bool:
-    """Returns True when thumb, index, and middle fingertips are pinched together."""
+    """Returns True if and only if the exact specified fingers are pinched together.
+
+    All fingers in `fingers` must be within `distance_threshold` of the reference finger,
+    and every non-selected finger must stay separated from all pinched fingers.
+    """
     if not is_palm_visible(hand_landmarks, hand_label):
         return False
 
     if is_palm_fist(hand_landmarks, hand_label):
         return False
 
-    thumb = hand_landmarks[_THUMB_TIP]
-    index = hand_landmarks[_INDEX_TIP]
-    middle = hand_landmarks[_MIDDLE_TIP]
+    selected = normalize_fingers(fingers)
+    if len(selected) < 2:
+        return False
 
-    dist_index = math.hypot(thumb.x - index.x, thumb.y - index.y)
-    dist_middle = math.hypot(thumb.x - middle.x, thumb.y - middle.y)
-    return dist_index <= distance_threshold and dist_middle <= distance_threshold
+    ref_name = "thumb" if "thumb" in selected else selected[0]
+    ref_pt = hand_landmarks[FINGER_TIPS[ref_name]]
+    other_selected = [f for f in selected if f != ref_name]
+
+    # 1. Inclusion check: all required fingers must touch the reference finger
+    for f in other_selected:
+        pt = hand_landmarks[FINGER_TIPS[f]]
+        if math.hypot(ref_pt.x - pt.x, ref_pt.y - pt.y) > distance_threshold:
+            return False
+
+    # 2. Strict exclusion check: no unselected finger may join the pinch cluster
+    excluded = [f for f in _FINGER_ORDER if f not in selected]
+    exclusion_ref_threshold = distance_threshold * 1.25
+    for g in excluded:
+        g_pt = hand_landmarks[FINGER_TIPS[g]]
+        if math.hypot(ref_pt.x - g_pt.x, ref_pt.y - g_pt.y) <= exclusion_ref_threshold:
+            return False
+        for f in other_selected:
+            f_pt = hand_landmarks[FINGER_TIPS[f]]
+            if math.hypot(f_pt.x - g_pt.x, f_pt.y - g_pt.y) <= distance_threshold:
+                return False
+
+    return True
 
 
 def is_pinch(
     hand_landmarks: Sequence,
     hand_label: str,
     distance_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
+    fingers: Sequence[str] = ("thumb", "index"),
 ) -> bool:
-    """Returns True if only the thumb and index fingertips touch (2-finger pinch)."""
-    if not is_palm_visible(hand_landmarks, hand_label):
-        return False
-
-    # Ensure at least one of the remaining fingers (middle, ring, pinky) is extended
-    # so that a closed fist does not accidentally trigger a pinch
-    has_extended_other_finger = any(
-        hand_landmarks[tip].y < hand_landmarks[pip].y
-        for tip, pip in zip(_OTHER_FINGER_TIPS, _OTHER_FINGER_PIPS)
+    """Returns True if the specified fingers form an exact pinch."""
+    return is_exact_pinch(
+        hand_landmarks=hand_landmarks,
+        hand_label=hand_label,
+        fingers=fingers,
+        distance_threshold=distance_threshold,
     )
-    if not has_extended_other_finger:
-        return False
-
-    # Exclude 3-finger wheel grip: middle finger must stay separated from thumb and index
-    thumb = hand_landmarks[_THUMB_TIP]
-    index = hand_landmarks[_INDEX_TIP]
-    middle = hand_landmarks[_MIDDLE_TIP]
-    if math.hypot(thumb.x - middle.x, thumb.y - middle.y) <= config.WHEEL_DISTANCE_THRESHOLD * 1.2:
-        return False
-    if math.hypot(index.x - middle.x, index.y - middle.y) <= distance_threshold:
-        return False
-
-    return pinch_distance(hand_landmarks) <= distance_threshold

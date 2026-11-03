@@ -14,14 +14,17 @@ from gesture_control.actions import (
 from gesture_control.controller import HandGestureState, SystemController
 from gesture_control.detector import DetectedHand, HandDetector
 from gesture_control.gestures import (
+    FINGER_TIPS,
     BaseGesture,
     FistVerticalGesture,
     PinchGesture,
-    WheelGesture,
+    PinchWheelGesture,
+    is_exact_pinch,
     is_palm_fist,
     is_palm_visible,
     is_pinch,
-    is_three_finger_pinch,
+    normalize_fingers,
+    pinch_group_max_distance,
 )
 from gesture_control.visualizer import Visualizer
 
@@ -31,6 +34,7 @@ __all__ = [
     "BrightnessAction",
     "CommandAction",
     "DetectedHand",
+    "FINGER_TIPS",
     "FistVerticalGesture",
     "HandDetector",
     "HandGestureState",
@@ -38,14 +42,16 @@ __all__ = [
     "MediaPlayPauseAction",
     "MediaPreviousAction",
     "PinchGesture",
+    "PinchWheelGesture",
     "SystemController",
     "Visualizer",
     "VolumeAction",
-    "WheelGesture",
     "config",
     "create_default_actions",
+    "is_exact_pinch",
     "is_palm_fist",
     "is_palm_visible",
     "is_pinch",
-    "is_three_finger_pinch",
+    "normalize_fingers",
+    "pinch_group_max_distance",
 ]

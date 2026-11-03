@@ -35,17 +35,17 @@ MOVEMENT_STEP_THRESHOLD = 0.035
 # Minimum elapsed time (in seconds) between consecutive adjustments per hand
 ACTION_COOLDOWN_SEC = 0.12
 
-# Normalized 2D distance (0.0 to 1.0) between thumb tip and index tip to detect a pinch
+# Normalized 2D distance (0.0 to 1.0) between fingertips to detect a standard pinch
 PINCH_DISTANCE_THRESHOLD = 0.05
 
 # Minimum elapsed time (in seconds) between consecutive pinch triggers per hand
 PINCH_COOLDOWN_SEC = 0.5
 
-# Normalized 2D distance (0.0 to 1.0) to detect a 3-finger wheel grip (thumb + index + middle)
-WHEEL_DISTANCE_THRESHOLD = 0.065
+# Normalized 2D distance (0.0 to 1.0) to detect a multi-finger pinch wheel grip
+PINCH_WHEEL_DISTANCE_THRESHOLD = 0.065
 
-# Rotation angle in radians (~15 degrees) required to trigger a wheel step adjustment
-WHEEL_ANGLE_THRESHOLD = 0.26
+# Rotation angle in radians (~15 degrees) required to trigger a pinch wheel step adjustment
+PINCH_WHEEL_ANGLE_THRESHOLD = 0.26
 
 # Adjustment step sizes (in percentage)
 VOLUME_STEP = 10
@@ -54,17 +54,29 @@ BRIGHTNESS_STEP = 10
 # Duration (in seconds) to display visual action feedback on the HUD
 HUD_FEEDBACK_DURATION_SEC = 0.4
 
-# Gesture-to-action mappings per hand: {hand_label: {gesture_name: action_name}}
-GESTURE_BINDINGS: dict[str, dict[str, str]] = {
-    "Right": {
-        "fist_up": "volume_up",
-        "fist_down": "volume_down",
-        "wheel_right": "volume_up",
-        "wheel_left": "volume_down",
-        "pinch": "play_pause",
-    },
-    "Left": {
-        "fist_up": "brightness_up",
-        "fist_down": "brightness_down",
-    },
+# Gesture-to-action mappings per hand.
+# For "pinch", "pinch_wheel_right", and "pinch_wheel_left", specify the exact fingers
+# ("thumb", "index", "middle", "ring", "pinky") that must be pinched together.
+GESTURE_BINDINGS: dict[str, list[dict[str, object]]] = {
+    "Right": [
+        {
+            "gesture": "pinch_wheel_right",
+            "fingers": ["thumb", "index", "middle"],
+            "action": "volume_up",
+        },
+        {
+            "gesture": "pinch_wheel_left",
+            "fingers": ["thumb", "index", "middle"],
+            "action": "volume_down",
+        },
+        {
+            "gesture": "pinch",
+            "fingers": ["thumb", "index"],
+            "action": "play_pause",
+        },
+    ],
+    "Left": [
+        {"gesture": "fist_up", "action": "brightness_up"},
+        {"gesture": "fist_down", "action": "brightness_down"},
+    ],
 }
