@@ -90,12 +90,11 @@ class HandDetector:
                 continue
             seen_labels.add(hand_label)
 
-            is_active = is_palm_fist(hand_landmarks, hand_label)
             hands.append(
                 DetectedHand(
                     label=hand_label,
                     landmarks=hand_landmarks,
-                    is_gesture_active=is_active,
+                    is_gesture_active=False,
                     wrist_y=hand_landmarks[0].y,
                 )
             )

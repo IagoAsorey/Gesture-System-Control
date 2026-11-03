@@ -91,8 +91,9 @@ class SystemController:
         }
 
     def _build_gestures_from_bindings(self) -> list[BaseGesture]:
-        """Instantiates gesture recognizers for all finger combinations in self.bindings."""
-        recognizers: list[BaseGesture] = [self._fist_gesture]
+        """Instantiates gesture recognizers for all gestures and finger combinations in self.bindings."""
+        recognizers: list[BaseGesture] = []
+        has_fist = False
         wheel_finger_sets: list[tuple[str, ...]] = []
         pinch_finger_sets: list[tuple[str, ...]] = []
 
@@ -100,7 +101,9 @@ class SystemController:
             for rule in rules:
                 g_name = rule["gesture"]
                 fingers = rule.get("fingers")
-                if g_name in ("pinch_wheel_right", "pinch_wheel_left"):
+                if g_name in ("fist_up", "fist_down"):
+                    has_fist = True
+                elif g_name in ("pinch_wheel_right", "pinch_wheel_left"):
                     f_set = fingers or ("thumb", "index", "middle")
                     if f_set not in wheel_finger_sets:
                         wheel_finger_sets.append(f_set)
@@ -109,6 +112,8 @@ class SystemController:
                     if f_set not in pinch_finger_sets:
                         pinch_finger_sets.append(f_set)
 
+        if has_fist:
+            recognizers.append(self._fist_gesture)
         for f_set in wheel_finger_sets:
             recognizers.append(
                 PinchWheelGesture(fingers=f_set, cooldown_sec=self._cooldown_sec)
