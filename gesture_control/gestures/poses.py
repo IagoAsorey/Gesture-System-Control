@@ -1,12 +1,13 @@
 """Static hand pose evaluation helpers."""
 
 import math
-from typing import Sequence
+from typing import Any, Sequence
 
 from gesture_control import config
 
 # Canonical finger order and MediaPipe fingertip landmark indices
-_FINGER_ORDER = ("thumb", "index", "middle", "ring", "pinky")
+# Index 0: thumb, 1: index, 2: middle, 3: ring, 4: pinky
+FINGER_NAMES: tuple[str, ...] = ("thumb", "index", "middle", "ring", "pinky")
 FINGER_TIPS: dict[str, int] = {
     "thumb": 4,
     "index": 8,
@@ -16,20 +17,32 @@ FINGER_TIPS: dict[str, int] = {
 }
 
 # Landmark indices for the 4 non-thumb fingertips and their corresponding PIP joints
-_FINGER_TIPS = (8, 12, 16, 20)
-_FINGER_PIPS = (6, 10, 14, 18)
+_FOUR_FINGER_TIPS = (8, 12, 16, 20)
+_FOUR_FINGER_PIPS = (6, 10, 14, 18)
 
 
-def normalize_fingers(fingers: Sequence[str]) -> tuple[str, ...]:
-    """Validates and normalizes a sequence of finger names into a canonical tuple."""
-    cleaned = {f.strip().lower() for f in fingers}
+def normalize_fingers(fingers: Any) -> tuple[str, ...]:
+    """Validates and normalizes finger configuration into a canonical tuple.
+
+    Supports:
+      - Binary arrays/lists, e.g. [1, 1, 0, 0, 0] (thumb, index, middle, ring, pinky).
+      - Sequence of names, e.g. ("thumb", "index") or ["thumb", "middle"].
+    """
+    if isinstance(fingers, (list, tuple)) and fingers and all(isinstance(x, (int, bool)) for x in fingers):
+        if len(fingers) != 5:
+            raise ValueError(
+                f"Binary finger array must have exactly 5 elements [thumb, index, middle, ring, pinky], got {fingers}"
+            )
+        return tuple(name for name, active in zip(FINGER_NAMES, fingers) if active)
+
+    cleaned = {str(f).strip().lower() for f in fingers}
     unknown = cleaned - FINGER_TIPS.keys()
     if unknown:
         raise ValueError(
             f"Unknown finger name(s): {sorted(unknown)}. "
-            f"Valid fingers are: {list(_FINGER_ORDER)}"
+            f"Valid fingers are: {list(FINGER_NAMES)}"
         )
-    return tuple(f for f in _FINGER_ORDER if f in cleaned)
+    return tuple(f for f in FINGER_NAMES if f in cleaned)
 
 
 def is_palm_visible(hand_landmarks: Sequence, hand_label: str) -> bool:
@@ -55,13 +68,13 @@ def is_palm_fist(hand_landmarks: Sequence, hand_label: str) -> bool:
     # Check that all 4 fingers (index, middle, ring, pinky) are folded down
     return all(
         hand_landmarks[tip].y > hand_landmarks[pip].y
-        for tip, pip in zip(_FINGER_TIPS, _FINGER_PIPS)
+        for tip, pip in zip(_FOUR_FINGER_TIPS, _FOUR_FINGER_PIPS)
     )
 
 
 def pinch_group_max_distance(
     hand_landmarks: Sequence,
-    fingers: Sequence[str] = ("thumb", "index"),
+    fingers: Any = ("thumb", "index"),
 ) -> float:
     """Returns the maximum 2D distance between the reference finger and all other selected fingers."""
     selected = normalize_fingers(fingers)
@@ -88,18 +101,16 @@ def pinch_distance(hand_landmarks: Sequence) -> float:
 def is_exact_pinch(
     hand_landmarks: Sequence,
     hand_label: str,
-    fingers: Sequence[str] = ("thumb", "index"),
+    fingers: Any = ("thumb", "index"),
     distance_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
 ) -> bool:
     """Returns True if and only if the exact specified fingers are pinched together.
 
     All fingers in `fingers` must be within `distance_threshold` of the reference finger,
     and every non-selected finger must stay separated from all pinched fingers.
+    Does not require extended fingers so pinches work even with other fingers curled in.
     """
     if not is_palm_visible(hand_landmarks, hand_label):
-        return False
-
-    if is_palm_fist(hand_landmarks, hand_label):
         return False
 
     selected = normalize_fingers(fingers)
@@ -117,7 +128,7 @@ def is_exact_pinch(
             return False
 
     # 2. Strict exclusion check: no unselected finger may join the pinch cluster
-    excluded = [f for f in _FINGER_ORDER if f not in selected]
+    excluded = [f for f in FINGER_NAMES if f not in selected]
     exclusion_ref_threshold = distance_threshold * 1.25
     for g in excluded:
         g_pt = hand_landmarks[FINGER_TIPS[g]]
@@ -135,7 +146,7 @@ def is_pinch(
     hand_landmarks: Sequence,
     hand_label: str,
     distance_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
-    fingers: Sequence[str] = ("thumb", "index"),
+    fingers: Any = ("thumb", "index"),
 ) -> bool:
     """Returns True if the specified fingers form an exact pinch."""
     return is_exact_pinch(

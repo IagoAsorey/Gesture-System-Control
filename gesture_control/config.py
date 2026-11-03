@@ -55,28 +55,39 @@ BRIGHTNESS_STEP = 10
 HUD_FEEDBACK_DURATION_SEC = 0.4
 
 # Gesture-to-action mappings per hand.
-# For "pinch", "pinch_wheel_right", and "pinch_wheel_left", specify the exact fingers
-# ("thumb", "index", "middle", "ring", "pinky") that must be pinched together.
+# "fingers" is a 5-element binary array: [thumb, index, middle, ring, pinky], 1 = active / pinched, 0 = inactive / separated.
+# Examples:
+#   [1, 1, 0, 0, 0] -> thumb + index
+#   [1, 1, 1, 0, 0] -> thumb + index + middle
+#   [1, 0, 0, 1, 0] -> thumb + ring
 GESTURE_BINDINGS: dict[str, list[dict[str, object]]] = {
     "Right": [
         {
             "gesture": "pinch_wheel_right",
-            "fingers": ["thumb", "index", "middle"],
+            "fingers": [1, 1, 1, 0, 0],
             "action": "volume_up",
         },
         {
             "gesture": "pinch_wheel_left",
-            "fingers": ["thumb", "index", "middle"],
+            "fingers": [1, 1, 1, 0, 0],
             "action": "volume_down",
         },
         {
             "gesture": "pinch",
-            "fingers": ["thumb", "index"],
+            "fingers": [1, 1, 0, 0, 0],
             "action": "play_pause",
         },
     ],
     "Left": [
-        {"gesture": "fist_up", "action": "brightness_up"},
-        {"gesture": "fist_down", "action": "brightness_down"},
+        {
+            "gesture": "pinch_wheel_right",
+            "fingers": [1, 1, 0, 0, 0],
+            "action": "brightness_up"
+        },
+        {
+            "gesture": "pinch_wheel_left",
+            "fingers": [1, 1, 0, 0, 0],
+            "action": "brightness_down"
+        },
     ],
 }
