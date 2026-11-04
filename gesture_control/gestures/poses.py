@@ -5,7 +5,7 @@ from typing import Any, Sequence
 
 from gesture_control import config
 
-# Canonical finger order and MediaPipe fingertip landmark indices
+# Canonical finger order and MediaPipe landmark indices
 # Index 0: thumb, 1: index, 2: middle, 3: ring, 4: pinky
 FINGER_NAMES: tuple[str, ...] = ("thumb", "index", "middle", "ring", "pinky")
 FINGER_TIPS: dict[str, int] = {
@@ -15,10 +15,12 @@ FINGER_TIPS: dict[str, int] = {
     "ring": 16,
     "pinky": 20,
 }
-
-# Landmark indices for the 4 non-thumb fingertips and their corresponding PIP joints
-_FOUR_FINGER_TIPS = (8, 12, 16, 20)
-_FOUR_FINGER_PIPS = (6, 10, 14, 18)
+FINGER_PIPS: dict[str, int] = {
+    "index": 6,
+    "middle": 10,
+    "ring": 14,
+    "pinky": 18,
+}
 
 
 def normalize_fingers(fingers: Any) -> tuple[str, ...]:
@@ -28,7 +30,11 @@ def normalize_fingers(fingers: Any) -> tuple[str, ...]:
       - Binary arrays/lists, e.g. [1, 1, 0, 0, 0] (thumb, index, middle, ring, pinky).
       - Sequence of names, e.g. ("thumb", "index") or ["thumb", "middle"].
     """
-    if isinstance(fingers, (list, tuple)) and fingers and all(isinstance(x, (int, bool)) for x in fingers):
+    if (
+        isinstance(fingers, (list, tuple))
+        and fingers
+        and all(isinstance(x, (int, bool)) for x in fingers)
+    ):
         if len(fingers) != 5:
             raise ValueError(
                 f"Binary finger array must have exactly 5 elements [thumb, index, middle, ring, pinky], got {fingers}"
@@ -60,16 +66,41 @@ def is_palm_visible(hand_landmarks: Sequence, hand_label: str) -> bool:
     )
 
 
-def is_palm_fist(hand_landmarks: Sequence, hand_label: str) -> bool:
-    """Returns True if the palm faces the camera and the fingers form a closed fist."""
+def is_finger_extended(
+    hand_landmarks: Sequence, hand_label: str, finger_name: str
+) -> bool:
+    """Returns True if the specified finger is extended outward."""
+    if finger_name == "thumb":
+        thumb_tip_x = hand_landmarks[4].x
+        thumb_ip_x = hand_landmarks[3].x
+        return (
+            thumb_tip_x > thumb_ip_x
+            if hand_label == "Right"
+            else thumb_tip_x < thumb_ip_x
+        )
+
+    tip_idx = FINGER_TIPS[finger_name]
+    pip_idx = FINGER_PIPS[finger_name]
+    return hand_landmarks[tip_idx].y < hand_landmarks[pip_idx].y
+
+
+def is_exact_extended_pose(
+    hand_landmarks: Sequence,
+    hand_label: str,
+    fingers: Any = (0, 1, 0, 0, 0),
+) -> bool:
+    """Returns True if the palm faces the camera and ONLY the specified fingers are extended."""
     if not is_palm_visible(hand_landmarks, hand_label):
         return False
 
-    # Check that all 4 fingers (index, middle, ring, pinky) are folded down
-    return all(
-        hand_landmarks[tip].y > hand_landmarks[pip].y
-        for tip, pip in zip(_FOUR_FINGER_TIPS, _FOUR_FINGER_PIPS)
-    )
+    selected = set(normalize_fingers(fingers))
+    for name in FINGER_NAMES:
+        is_ext = is_finger_extended(hand_landmarks, hand_label, name)
+        if name in selected and not is_ext:
+            return False
+        if name not in selected and is_ext:
+            return False
+    return True
 
 
 def pinch_group_max_distance(
@@ -108,7 +139,6 @@ def is_exact_pinch(
 
     All fingers in `fingers` must be within `distance_threshold` of the reference finger,
     and every non-selected finger must stay separated from all pinched fingers.
-    Does not require extended fingers so pinches work even with other fingers curled in.
     """
     if not is_palm_visible(hand_landmarks, hand_label):
         return False

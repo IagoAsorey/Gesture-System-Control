@@ -9,17 +9,23 @@ from gesture_control.actions import BaseAction, create_default_actions
 from gesture_control.detector import DetectedHand
 from gesture_control.gestures import (
     BaseGesture,
-    FistVerticalGesture,
     PinchGesture,
     PinchWheelGesture,
+    SwipeGesture,
     normalize_fingers,
 )
+
+_SWIPE_GESTURE_NAMES = ("swipe_up", "swipe_down", "swipe_left", "swipe_right")
+_WHEEL_GESTURE_NAMES = ("pinch_wheel_right", "pinch_wheel_left")
 
 
 def _normalize_hand_rules(rules: Any) -> list[dict[str, Any]]:
     """Normalizes a hand's binding configuration into a list of rule dicts."""
     if isinstance(rules, dict):
-        return [{"gesture": str(k), "action": str(v), "fingers": None} for k, v in rules.items()]
+        return [
+            {"gesture": str(k), "action": str(v), "fingers": None}
+            for k, v in rules.items()
+        ]
 
     normalized: list[dict[str, Any]] = []
     for rule in rules:
@@ -49,7 +55,7 @@ class SystemController:
 
     def __init__(
         self,
-        step_threshold: float = config.MOVEMENT_STEP_THRESHOLD,
+        step_threshold: float = config.SWIPE_STEP_THRESHOLD,
         cooldown_sec: float = config.ACTION_COOLDOWN_SEC,
         volume_step: int = config.VOLUME_STEP,
         brightness_step: int = config.BRIGHTNESS_STEP,
@@ -66,10 +72,6 @@ class SystemController:
             for hand, hand_rules in source_bindings.items()
         }
 
-        self._fist_gesture = FistVerticalGesture(
-            step_threshold=step_threshold,
-            cooldown_sec=cooldown_sec,
-        )
         self._custom_gestures = gestures is not None
         self.gestures: list[BaseGesture] = (
             list(gestures)
@@ -93,7 +95,7 @@ class SystemController:
     def _build_gestures_from_bindings(self) -> list[BaseGesture]:
         """Instantiates gesture recognizers for all gestures and finger combinations in self.bindings."""
         recognizers: list[BaseGesture] = []
-        has_fist = False
+        swipe_finger_sets: list[tuple[str, ...]] = []
         wheel_finger_sets: list[tuple[str, ...]] = []
         pinch_finger_sets: list[tuple[str, ...]] = []
 
@@ -101,19 +103,27 @@ class SystemController:
             for rule in rules:
                 g_name = rule["gesture"]
                 fingers = rule.get("fingers")
-                if g_name in ("fist_up", "fist_down"):
-                    has_fist = True
-                elif g_name in ("pinch_wheel_right", "pinch_wheel_left"):
-                    f_set = fingers or ("thumb", "index", "middle")
+                if g_name in _SWIPE_GESTURE_NAMES:
+                    f_set = fingers if fingers is not None else ("index",)
+                    if f_set not in swipe_finger_sets:
+                        swipe_finger_sets.append(f_set)
+                elif g_name in _WHEEL_GESTURE_NAMES:
+                    f_set = fingers if fingers is not None else ("thumb", "index", "middle")
                     if f_set not in wheel_finger_sets:
                         wheel_finger_sets.append(f_set)
                 elif g_name == "pinch":
-                    f_set = fingers or ("thumb", "index")
+                    f_set = fingers if fingers is not None else ("thumb", "index")
                     if f_set not in pinch_finger_sets:
                         pinch_finger_sets.append(f_set)
 
-        if has_fist:
-            recognizers.append(self._fist_gesture)
+        for f_set in swipe_finger_sets:
+            recognizers.append(
+                SwipeGesture(
+                    fingers=f_set,
+                    step_threshold=self._step_threshold,
+                    cooldown_sec=self._cooldown_sec,
+                )
+            )
         for f_set in wheel_finger_sets:
             recognizers.append(
                 PinchWheelGesture(fingers=f_set, cooldown_sec=self._cooldown_sec)
@@ -128,7 +138,7 @@ class SystemController:
         hand_label: str,
         gesture_name: str,
         action_name: str,
-        fingers: Optional[Sequence[str]] = None,
+        fingers: Optional[Any] = None,
     ) -> None:
         """Assigns or updates the action triggered by a gesture (and optional finger set) on a hand."""
         norm_fingers = normalize_fingers(fingers) if fingers is not None else None
@@ -179,19 +189,6 @@ class SystemController:
         hand.is_gesture_active = any_pose_active
         return triggered_label
 
-    def process_hand_gesture(
-        self, hand_label: str, is_gesture_active: bool, current_y: float
-    ) -> Optional[str]:
-        """Evaluates vertical wrist movement and triggers the bound action."""
-        gesture_name = self._fist_gesture.evaluate(
-            hand_label=hand_label,
-            is_active=is_gesture_active,
-            current_y=current_y,
-        )
-        if gesture_name is None:
-            return None
-        return self.trigger_gesture(hand_label, gesture_name)
-
     def _resolve_action_name(
         self,
         hand_label: str,
@@ -212,7 +209,7 @@ class SystemController:
         self,
         hand_label: str,
         gesture_name: str,
-        fingers: Optional[Sequence[str]] = None,
+        fingers: Optional[Any] = None,
     ) -> Optional[str]:
         """Resolves the action mapped to (hand_label, gesture_name, fingers) and executes it."""
         norm_fingers = (

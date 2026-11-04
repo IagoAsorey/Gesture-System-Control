@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 import time
-from typing import Sequence
 import urllib.request
 
 import mediapipe as mp
@@ -12,7 +11,6 @@ from mediapipe.tasks.python import vision
 import numpy as np
 
 from gesture_control import config
-from gesture_control.gestures import is_palm_fist
 
 
 @dataclass(slots=True)
@@ -26,7 +24,7 @@ class DetectedHand:
 
 
 class HandDetector:
-    """Encapsulates MediaPipe HandLandmarker inference and gesture state analysis."""
+    """Encapsulates MediaPipe HandLandmarker inference and hand landmark extraction."""
 
     def __init__(
         self,
@@ -100,8 +98,6 @@ class HandDetector:
             )
 
         return hands
-
-    _is_palm_fist_active = staticmethod(is_palm_fist)
 
     def close(self) -> None:
         """Releases underlying MediaPipe C++ resources."""

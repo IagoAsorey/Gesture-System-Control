@@ -29,8 +29,8 @@ MIN_PRESENCE_CONFIDENCE = 0.6
 MIN_TRACKING_CONFIDENCE = 0.6
 
 # Gesture recognition and sensitivity settings
-# Normalized vertical distance (0.0 to 1.0) required to trigger a single step adjustment
-MOVEMENT_STEP_THRESHOLD = 0.035
+# Normalized 2D distance (0.0 to 1.0) required to trigger a single swipe step
+SWIPE_STEP_THRESHOLD = 0.035
 
 # Minimum elapsed time (in seconds) between consecutive adjustments per hand
 ACTION_COOLDOWN_SEC = 0.12
@@ -55,13 +55,21 @@ BRIGHTNESS_STEP = 10
 HUD_FEEDBACK_DURATION_SEC = 0.4
 
 # Gesture-to-action mappings per hand.
-# "fingers" is a 5-element binary array: [thumb, index, middle, ring, pinky], 1 = active / pinched, 0 = inactive / separated.
-# Examples:
-#   [1, 1, 0, 0, 0] -> thumb + index
-#   [1, 1, 1, 0, 0] -> thumb + index + middle
-#   [1, 0, 0, 1, 0] -> thumb + ring
+# "fingers" is a 5-element binary array: [thumb, index, middle, ring, pinky]
+#   - For "pinch" and "pinch_wheel_*": 1 = pinched together, 0 = separated.
+#   - For "swipe_up", "swipe_down", "swipe_left", "swipe_right": 1 = extended, 0 = folded.
 GESTURE_BINDINGS: dict[str, list[dict[str, object]]] = {
     "Right": [
+        {
+            "gesture": "swipe_right",
+            "fingers": [0, 1, 0, 0, 0],
+            "action": "next_track",
+        },
+        {
+            "gesture": "swipe_left",
+            "fingers": [0, 1, 0, 0, 0],
+            "action": "previous_track",
+        },
         {
             "gesture": "pinch_wheel_right",
             "fingers": [1, 1, 1, 0, 0],
@@ -80,14 +88,14 @@ GESTURE_BINDINGS: dict[str, list[dict[str, object]]] = {
     ],
     "Left": [
         {
-            "gesture": "pinch_wheel_right",
-            "fingers": [1, 1, 0, 0, 0],
-            "action": "brightness_up"
+            "gesture": "swipe_up",
+            "fingers": [0, 1, 0, 0, 0],
+            "action": "brightness_up",
         },
         {
-            "gesture": "pinch_wheel_left",
-            "fingers": [1, 1, 0, 0, 0],
-            "action": "brightness_down"
+            "gesture": "swipe_down",
+            "fingers": [0, 1, 0, 0, 0],
+            "action": "brightness_down",
         },
     ],
 }
