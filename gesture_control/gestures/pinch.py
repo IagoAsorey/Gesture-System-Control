@@ -1,14 +1,17 @@
-"""Pinch and rotary pinch-wheel gesture recognizers with strict finger selection."""
+"""Pinch family gesture recognizers (static pinch, pinch_wheel, and pinch_swipe)."""
 
 from dataclasses import dataclass
-import math
 import time
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Optional
 
 from gesture_control import config
 from gesture_control.gestures.base import BaseGesture
+from gesture_control.gestures.movements import (
+    SwipeMovementTracker,
+    WheelMovementTracker,
+)
 from gesture_control.gestures.poses import (
-    FINGER_TIPS,
+    compute_group_angle,
     is_exact_pinch,
     normalize_fingers,
     pinch_group_max_distance,
@@ -17,12 +20,10 @@ from gesture_control.gestures.poses import (
 if TYPE_CHECKING:
     from gesture_control.detector import DetectedHand
 
-_WRIST = 0
-
 
 @dataclass(slots=True)
 class _PinchState:
-    """Internal per-hand state for edge-triggered pinch detection."""
+    """Internal per-hand state for edge-triggered pinch detection with hysteresis."""
 
     is_pinched: bool = False
     last_trigger_ts: float = 0.0
@@ -38,7 +39,7 @@ class PinchGesture(BaseGesture):
 
     def __init__(
         self,
-        fingers: Sequence[str] = ("thumb", "index"),
+        fingers: Any = (1, 1, 0, 0, 0),
         distance_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
         cooldown_sec: float = config.PINCH_COOLDOWN_SEC,
     ) -> None:
@@ -90,33 +91,6 @@ class PinchGesture(BaseGesture):
         return True, "pinch"
 
 
-def _compute_pinch_wheel_angle(
-    hand_landmarks: Sequence, fingers: Sequence[str]
-) -> float:
-    """Computes the rotation angle (in radians) of the pinched fingers relative to the wrist.
-
-    Angle increases when rotating clockwise (to the right) from the user's perspective,
-    and decreases when rotating counter-clockwise (to the left).
-    """
-    wrist = hand_landmarks[_WRIST]
-    indices = [FINGER_TIPS[f] for f in fingers]
-    pinch_x = sum(hand_landmarks[i].x for i in indices) / len(indices)
-    pinch_y = sum(hand_landmarks[i].y for i in indices) / len(indices)
-
-    # In the unflipped camera frame, user's physical right corresponds to smaller X
-    dx = wrist.x - pinch_x
-    dy = pinch_y - wrist.y
-    return math.atan2(dy, dx)
-
-
-@dataclass(slots=True)
-class _PinchWheelTrackState:
-    """Internal per-hand state for rotary pinch-wheel tracking."""
-
-    anchor_angle: Optional[float] = None
-    last_trigger_ts: float = 0.0
-
-
 class PinchWheelGesture(BaseGesture):
     """Recognizes rotating the hand like a knob while pinching an exact set of fingers.
 
@@ -127,27 +101,25 @@ class PinchWheelGesture(BaseGesture):
 
     def __init__(
         self,
-        fingers: Sequence[str] = ("thumb", "index", "middle"),
+        fingers: Any = (1, 1, 1, 0, 0),
         distance_threshold: float = config.PINCH_WHEEL_DISTANCE_THRESHOLD,
-        angle_threshold: float = config.PINCH_WHEEL_ANGLE_THRESHOLD,
+        angle_threshold: float = config.WHEEL_ANGLE_THRESHOLD,
         cooldown_sec: float = config.ACTION_COOLDOWN_SEC,
     ) -> None:
         self.fingers: tuple[str, ...] = normalize_fingers(fingers)
         self.distance_threshold = distance_threshold
-        self.angle_threshold = angle_threshold
-        self.cooldown_sec = cooldown_sec
-        self._tracks: dict[str, _PinchWheelTrackState] = {
-            "Right": _PinchWheelTrackState(),
-            "Left": _PinchWheelTrackState(),
-        }
+        self._tracker = WheelMovementTracker(
+            prefix="pinch",
+            angle_threshold=angle_threshold,
+            cooldown_sec=cooldown_sec,
+        )
 
     def reset(self, hand_label: str) -> None:
         """Resets the angular anchor when a hand leaves the frame."""
-        if track := self._tracks.get(hand_label):
-            track.anchor_angle = None
+        self._tracker.reset(hand_label)
 
     def update(self, hand: "DetectedHand") -> tuple[bool, Optional[str]]:
-        """Evaluates the exact pinch-wheel pose and angular rotation for a detected hand."""
+        """Evaluates the exact pinch pose and angular rotation for a detected hand."""
         if not hand.landmarks:
             self.reset(hand.label)
             return False, None
@@ -159,7 +131,7 @@ class PinchWheelGesture(BaseGesture):
             self.reset(hand.label)
             return False, None
 
-        current_angle = _compute_pinch_wheel_angle(hand.landmarks, self.fingers)
+        current_angle = compute_group_angle(hand.landmarks, self.fingers)
         gesture_name = self.evaluate(hand.label, is_active, current_angle)
         return True, gesture_name
 
@@ -167,31 +139,55 @@ class PinchWheelGesture(BaseGesture):
         self, hand_label: str, is_active: bool, current_angle: float
     ) -> Optional[str]:
         """Evaluates angular displacement and returns 'pinch_wheel_right', 'pinch_wheel_left', or None."""
-        track = self._tracks.get(hand_label)
-        if track is None:
-            return None
+        return self._tracker.evaluate(hand_label, is_active, current_angle)
 
-        if not is_active:
-            track.anchor_angle = None
-            return None
 
-        # First frame holding the exact pinch: set angular anchor without firing
-        if track.anchor_angle is None:
-            track.anchor_angle = current_angle
-            return None
+class PinchSwipeGesture(BaseGesture):
+    """Recognizes 4-directional swipes while holding an exact multi-finger pinch.
 
-        # Shortest signed angular difference in (-pi, pi]
-        delta_angle = math.atan2(
-            math.sin(current_angle - track.anchor_angle),
-            math.cos(current_angle - track.anchor_angle),
+    Emits:
+        - "pinch_swipe_right", "pinch_swipe_left", "pinch_swipe_up", "pinch_swipe_down"
+    """
+
+    def __init__(
+        self,
+        fingers: Any = (1, 1, 0, 0, 0),
+        distance_threshold: float = config.PINCH_WHEEL_DISTANCE_THRESHOLD,
+        step_threshold: float = config.SWIPE_STEP_THRESHOLD,
+        cooldown_sec: float = config.ACTION_COOLDOWN_SEC,
+    ) -> None:
+        self.fingers: tuple[str, ...] = normalize_fingers(fingers)
+        self.distance_threshold = distance_threshold
+        self._tracker = SwipeMovementTracker(
+            prefix="pinch",
+            step_threshold=step_threshold,
+            cooldown_sec=cooldown_sec,
         )
-        if abs(delta_angle) < self.angle_threshold:
-            return None
 
-        now = time.monotonic()
-        if (now - track.last_trigger_ts) < self.cooldown_sec:
-            return None
+    def reset(self, hand_label: str) -> None:
+        """Resets the 2D swipe anchor when a hand leaves the frame."""
+        self._tracker.reset(hand_label)
 
-        track.anchor_angle = current_angle
-        track.last_trigger_ts = now
-        return "pinch_wheel_right" if delta_angle > 0 else "pinch_wheel_left"
+    def update(self, hand: "DetectedHand") -> tuple[bool, Optional[str]]:
+        """Evaluates the exact pinch pose and 2D swipe movement for a detected hand."""
+        if not hand.landmarks:
+            self.reset(hand.label)
+            return False, None
+
+        is_active = is_exact_pinch(
+            hand.landmarks, hand.label, self.fingers, self.distance_threshold
+        )
+        current_x = hand.landmarks[0].x
+        current_y = hand.landmarks[0].y
+        gesture_name = self.evaluate(hand.label, is_active, current_x, current_y)
+        return is_active, gesture_name
+
+    def evaluate(
+        self,
+        hand_label: str,
+        is_active: bool,
+        current_x: float,
+        current_y: float,
+    ) -> Optional[str]:
+        """Evaluates 2D displacement and returns 'pinch_swipe_up/down/left/right' or None."""
+        return self._tracker.evaluate(hand_label, is_active, current_x, current_y)

@@ -1,4 +1,4 @@
-"""Static hand pose evaluation helpers."""
+"""Static hand pose evaluation and geometry helpers."""
 
 import math
 from typing import Any, Sequence
@@ -21,6 +21,9 @@ FINGER_PIPS: dict[str, int] = {
     "ring": 14,
     "pinky": 18,
 }
+
+_WRIST = 0
+_MIDDLE_MCP = 9
 
 
 def normalize_fingers(fingers: Any) -> tuple[str, ...]:
@@ -88,10 +91,20 @@ def is_exact_extended_pose(
     hand_landmarks: Sequence,
     hand_label: str,
     fingers: Any = (0, 1, 0, 0, 0),
+    pinch_exclusion_threshold: float = config.PINCH_DISTANCE_THRESHOLD,
 ) -> bool:
-    """Returns True if the palm faces the camera and ONLY the specified fingers are extended."""
+    """Returns True if the palm faces the camera, ONLY the specified fingers are extended,
+    and no fingers are pinched against the thumb.
+    """
     if not is_palm_visible(hand_landmarks, hand_label):
         return False
+
+    # Exclude active pinches so 'pose' and 'pinch' families never conflict
+    thumb_pt = hand_landmarks[FINGER_TIPS["thumb"]]
+    for f_name in ("index", "middle", "ring", "pinky"):
+        pt = hand_landmarks[FINGER_TIPS[f_name]]
+        if math.hypot(thumb_pt.x - pt.x, thumb_pt.y - pt.y) <= pinch_exclusion_threshold:
+            return False
 
     selected = set(normalize_fingers(fingers))
     for name in FINGER_NAMES:
@@ -101,6 +114,31 @@ def is_exact_extended_pose(
         if name not in selected and is_ext:
             return False
     return True
+
+
+def compute_group_angle(
+    hand_landmarks: Sequence, fingers: Sequence[str]
+) -> float:
+    """Computes the rotation angle (in radians) of the active fingers relative to the wrist.
+
+    Angle increases when rotating clockwise (to the right) from the user's perspective,
+    and decreases when rotating counter-clockwise (to the left).
+    """
+    wrist = hand_landmarks[_WRIST]
+    if fingers:
+        indices = [FINGER_TIPS[f] for f in fingers]
+        target_x = sum(hand_landmarks[i].x for i in indices) / len(indices)
+        target_y = sum(hand_landmarks[i].y for i in indices) / len(indices)
+    else:
+        # Fallback for 0 extended fingers ([0, 0, 0, 0, 0] closed fist): use middle MCP
+        knuckle = hand_landmarks[_MIDDLE_MCP]
+        target_x = knuckle.x
+        target_y = knuckle.y
+
+    # In the unflipped camera frame, user's physical right corresponds to smaller X
+    dx = wrist.x - target_x
+    dy = target_y - wrist.y
+    return math.atan2(dy, dx)
 
 
 def pinch_group_max_distance(

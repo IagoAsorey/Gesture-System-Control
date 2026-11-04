@@ -10,13 +10,28 @@ from gesture_control.detector import DetectedHand
 from gesture_control.gestures import (
     BaseGesture,
     PinchGesture,
+    PinchSwipeGesture,
     PinchWheelGesture,
-    SwipeGesture,
+    PoseGesture,
+    PoseSwipeGesture,
+    PoseWheelGesture,
     normalize_fingers,
 )
 
-_SWIPE_GESTURE_NAMES = ("swipe_up", "swipe_down", "swipe_left", "swipe_right")
-_WHEEL_GESTURE_NAMES = ("pinch_wheel_right", "pinch_wheel_left")
+_PINCH_WHEEL_NAMES = ("pinch_wheel_right", "pinch_wheel_left")
+_PINCH_SWIPE_NAMES = (
+    "pinch_swipe_up",
+    "pinch_swipe_down",
+    "pinch_swipe_left",
+    "pinch_swipe_right",
+)
+_POSE_WHEEL_NAMES = ("pose_wheel_right", "pose_wheel_left")
+_POSE_SWIPE_NAMES = (
+    "pose_swipe_up",
+    "pose_swipe_down",
+    "pose_swipe_left",
+    "pose_swipe_right",
+)
 
 
 def _normalize_hand_rules(rules: Any) -> list[dict[str, Any]]:
@@ -95,41 +110,75 @@ class SystemController:
     def _build_gestures_from_bindings(self) -> list[BaseGesture]:
         """Instantiates gesture recognizers for all gestures and finger combinations in self.bindings."""
         recognizers: list[BaseGesture] = []
-        swipe_finger_sets: list[tuple[str, ...]] = []
-        wheel_finger_sets: list[tuple[str, ...]] = []
-        pinch_finger_sets: list[tuple[str, ...]] = []
+        pinch_sets: list[tuple[str, ...]] = []
+        pinch_wheel_sets: list[tuple[str, ...]] = []
+        pinch_swipe_sets: list[tuple[str, ...]] = []
+        pose_sets: list[tuple[str, ...]] = []
+        pose_wheel_sets: list[tuple[str, ...]] = []
+        pose_swipe_sets: list[tuple[str, ...]] = []
 
         for rules in self.bindings.values():
             for rule in rules:
                 g_name = rule["gesture"]
                 fingers = rule.get("fingers")
-                if g_name in _SWIPE_GESTURE_NAMES:
-                    f_set = fingers if fingers is not None else ("index",)
-                    if f_set not in swipe_finger_sets:
-                        swipe_finger_sets.append(f_set)
-                elif g_name in _WHEEL_GESTURE_NAMES:
-                    f_set = fingers if fingers is not None else ("thumb", "index", "middle")
-                    if f_set not in wheel_finger_sets:
-                        wheel_finger_sets.append(f_set)
-                elif g_name == "pinch":
+                if g_name == "pinch":
                     f_set = fingers if fingers is not None else ("thumb", "index")
-                    if f_set not in pinch_finger_sets:
-                        pinch_finger_sets.append(f_set)
+                    if f_set not in pinch_sets:
+                        pinch_sets.append(f_set)
+                elif g_name in _PINCH_WHEEL_NAMES:
+                    f_set = (
+                        fingers
+                        if fingers is not None
+                        else ("thumb", "index", "middle")
+                    )
+                    if f_set not in pinch_wheel_sets:
+                        pinch_wheel_sets.append(f_set)
+                elif g_name in _PINCH_SWIPE_NAMES:
+                    f_set = fingers if fingers is not None else ("thumb", "index")
+                    if f_set not in pinch_swipe_sets:
+                        pinch_swipe_sets.append(f_set)
+                elif g_name == "pose":
+                    f_set = fingers if fingers is not None else ("index",)
+                    if f_set not in pose_sets:
+                        pose_sets.append(f_set)
+                elif g_name in _POSE_WHEEL_NAMES:
+                    f_set = fingers if fingers is not None else ("index",)
+                    if f_set not in pose_wheel_sets:
+                        pose_wheel_sets.append(f_set)
+                elif g_name in _POSE_SWIPE_NAMES:
+                    f_set = fingers if fingers is not None else ("index",)
+                    if f_set not in pose_swipe_sets:
+                        pose_swipe_sets.append(f_set)
 
-        for f_set in swipe_finger_sets:
+        for f_set in pinch_wheel_sets:
             recognizers.append(
-                SwipeGesture(
+                PinchWheelGesture(fingers=f_set, cooldown_sec=self._cooldown_sec)
+            )
+        for f_set in pinch_swipe_sets:
+            recognizers.append(
+                PinchSwipeGesture(
                     fingers=f_set,
                     step_threshold=self._step_threshold,
                     cooldown_sec=self._cooldown_sec,
                 )
             )
-        for f_set in wheel_finger_sets:
-            recognizers.append(
-                PinchWheelGesture(fingers=f_set, cooldown_sec=self._cooldown_sec)
-            )
-        for f_set in pinch_finger_sets:
+        for f_set in pinch_sets:
             recognizers.append(PinchGesture(fingers=f_set))
+
+        for f_set in pose_wheel_sets:
+            recognizers.append(
+                PoseWheelGesture(fingers=f_set, cooldown_sec=self._cooldown_sec)
+            )
+        for f_set in pose_swipe_sets:
+            recognizers.append(
+                PoseSwipeGesture(
+                    fingers=f_set,
+                    step_threshold=self._step_threshold,
+                    cooldown_sec=self._cooldown_sec,
+                )
+            )
+        for f_set in pose_sets:
+            recognizers.append(PoseGesture(fingers=f_set))
 
         return recognizers
 

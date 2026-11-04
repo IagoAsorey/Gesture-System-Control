@@ -32,20 +32,25 @@ MIN_TRACKING_CONFIDENCE = 0.6
 # Normalized 2D distance (0.0 to 1.0) required to trigger a single swipe step
 SWIPE_STEP_THRESHOLD = 0.035
 
-# Minimum elapsed time (in seconds) between consecutive adjustments per hand
+# Rotation angle in radians (~15 degrees) required to trigger a wheel step adjustment
+WHEEL_ANGLE_THRESHOLD = 0.26
+PINCH_WHEEL_ANGLE_THRESHOLD = WHEEL_ANGLE_THRESHOLD
+
+# Minimum elapsed time (in seconds) between consecutive step adjustments per hand
 ACTION_COOLDOWN_SEC = 0.12
 
 # Normalized 2D distance (0.0 to 1.0) between fingertips to detect a standard pinch
 PINCH_DISTANCE_THRESHOLD = 0.05
 
-# Minimum elapsed time (in seconds) between consecutive pinch triggers per hand
-PINCH_COOLDOWN_SEC = 0.5
-
-# Normalized 2D distance (0.0 to 1.0) to detect a multi-finger pinch wheel grip
+# Normalized 2D distance (0.0 to 1.0) to detect a multi-finger pinch wheel/swipe grip
 PINCH_WHEEL_DISTANCE_THRESHOLD = 0.065
 
-# Rotation angle in radians (~15 degrees) required to trigger a pinch wheel step adjustment
-PINCH_WHEEL_ANGLE_THRESHOLD = 0.26
+# Minimum elapsed time (in seconds) between consecutive static pinch triggers per hand
+PINCH_COOLDOWN_SEC = 0.5
+
+# Hold confirmation time and cooldown (in seconds) for static extended-finger pose triggers
+POSE_HOLD_DURATION_SEC = 0.15
+POSE_COOLDOWN_SEC = 0.5
 
 # Adjustment step sizes (in percentage)
 VOLUME_STEP = 10
@@ -56,17 +61,19 @@ HUD_FEEDBACK_DURATION_SEC = 0.4
 
 # Gesture-to-action mappings per hand.
 # "fingers" is a 5-element binary array: [thumb, index, middle, ring, pinky]
-#   - For "pinch" and "pinch_wheel_*": 1 = pinched together, 0 = separated.
-#   - For "swipe_up", "swipe_down", "swipe_left", "swipe_right": 1 = extended, 0 = folded.
+#   - Family "pinch" ("pinch", "pinch_wheel_*", "pinch_swipe_*"):
+#       1 = pinched together, 0 = separated.
+#   - Family "pose" ("pose", "pose_wheel_*", "pose_swipe_*"):
+#       1 = extended outward, 0 = folded/curled.
 GESTURE_BINDINGS: dict[str, list[dict[str, object]]] = {
     "Right": [
         {
-            "gesture": "swipe_right",
+            "gesture": "pose_swipe_right",
             "fingers": [0, 1, 0, 0, 0],
             "action": "next_track",
         },
         {
-            "gesture": "swipe_left",
+            "gesture": "pose_swipe_left",
             "fingers": [0, 1, 0, 0, 0],
             "action": "previous_track",
         },
@@ -88,12 +95,12 @@ GESTURE_BINDINGS: dict[str, list[dict[str, object]]] = {
     ],
     "Left": [
         {
-            "gesture": "swipe_up",
+            "gesture": "pose_swipe_up",
             "fingers": [0, 1, 0, 0, 0],
             "action": "brightness_up",
         },
         {
-            "gesture": "swipe_down",
+            "gesture": "pose_swipe_down",
             "fingers": [0, 1, 0, 0, 0],
             "action": "brightness_down",
         },
